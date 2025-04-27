@@ -1,0 +1,13 @@
+{
+  "version": "0",
+  "id": "scheduled-event-id",
+  "detail-type": "Scheduled Event",
+  "source": "aws.events",
+  "account": "123456789012",
+  "time": "2023-06-15T08:00:00Z",
+  "region": "us-east-1",
+  "resources": [
+    "arn:aws:events:us-east-1:123456789012:rule/daily-summary"
+  ],
+  "detail": {}
+} 

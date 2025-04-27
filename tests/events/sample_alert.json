@@ -1,0 +1,12 @@
+{
+  "body": "{\"id\":\"alert-id-1\",\"title\":\"Test Security Alert\",\"alertSeverity\":\"high\",\"description\":\"This is a test alert from Defender\",\"createdDateTime\":\"2023-06-15T10:00:00Z\",\"status\":\"new\",\"category\":\"InitialAccess\",\"sourceMaterials\":[\"https://example.com/alert/1\"],\"vendorInformation\":{\"provider\":\"Microsoft\",\"providerVersion\":\"1.0\"}}",
+  "requestContext": {
+    "identity": {
+      "sourceIp": "192.168.1.1"
+    },
+    "requestId": "test-request-id"
+  },
+  "headers": {
+    "Content-Type": "application/json"
+  }
+} 

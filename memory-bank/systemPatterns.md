@@ -36,83 +36,127 @@ The system follows a serverless, event-driven architecture based on AWS services
 
 2. **Infrastructure as Code**: Using Terraform to define and manage infrastructure, ensuring consistency and repeatability across deployments.
 
-3. **Event-Driven Model**:
+3. **Python for Lambda Functions**: Using Python for Lambda functions due to its simplicity and extensive library support, particularly for AWS integration via boto3.
+
+4. **Event-Driven Model**:
    - Webhook events from Microsoft Defender trigger real-time notifications
    - Scheduled events from EventBridge trigger daily summary reports
 
-4. **Separation of Concerns**:
+5. **Separation of Concerns**:
    - Alert Processing Lambda: Handles real-time notifications
    - Summary Generator Lambda: Handles daily report generation
+   - Shared libraries for common functionality
 
-5. **Secure Secret Management**: Storing API tokens and credentials in AWS Secrets Manager.
+6. **Secure Secret Management**: Storing API tokens and credentials in AWS Secrets Manager.
 
-6. **Comprehensive Monitoring**: Using CloudWatch for monitoring, logging, and alerting on system health.
+7. **Comprehensive Monitoring**: Using CloudWatch for monitoring, logging, and alerting on system health.
 
 ## Design Patterns
 
-1. **Adapter Pattern**: Converting Microsoft Defender alert formats to Slack message formats.
+1. **Adapter Pattern**: The implementation uses the Adapter pattern in several places:
+   - `DefenderClient` adapts the Microsoft Defender API to our application's needs
+   - `SlackClient` adapts the Slack API for message delivery
+   - `alert_formatter.py` adapts alert data to Slack message format
 
-2. **Strategy Pattern**: Different strategies for handling various alert types and severities.
+2. **Strategy Pattern**: Different strategies for handling various alert types:
+   - Filtering strategy based on alert severity
+   - Different reporting strategies for Monday vs. weekday reports
+   - Different formatting strategies based on message type
 
-3. **Factory Pattern**: Creating appropriate message templates based on alert type.
+3. **Factory Pattern**: Message formatting follows a factory-like approach:
+   - `format_alert()` creates appropriate message blocks based on alert data
+   - `format_summary()` creates report blocks based on alert collection
 
-4. **Decorator Pattern**: Enhancing basic messages with severity indicators and additional context.
+4. **Decorator Pattern**: The message formatting applies additional context:
+   - Adding severity indicators to base messages
+   - Enhancing messages with timestamps and resource information
+   - Adding categorization to summary reports
 
-5. **Observer Pattern**: The system observes (listens to) Microsoft Defender events and reacts accordingly.
+5. **Observer Pattern**: The system observes Microsoft Defender events via webhooks.
+
+6. **Dependency Injection**: Lambda functions receive dependencies (like clients) that can be replaced for testing.
 
 ## Component Relationships
 
 ### Alert Processing Pipeline
 
 1. **Webhook Receiver** (API Gateway):
-   - Authenticates incoming requests
-   - Validates payload structure
-   - Routes to Lambda function
+   - Authenticates incoming requests from Microsoft Defender
+   - Routes payload to Alert Processor Lambda
 
-2. **Alert Processor** (Lambda):
-   - Parses alert data
-   - Filters based on severity
-   - Formats for Slack
-   - Delivers to Slack API
+2. **Alert Processor** (Lambda - `alert_processor.py`):
+   - Initializes clients and secrets
+   - Parses alert data from webhook payload
+   - Filters alerts based on severity
+   - Calls formatter to create Slack message
+   - Delivers formatted message to Slack
 
-3. **Notification Formatter**:
-   - Applies message templates
-   - Adds severity indicators
-   - Includes relevant details
+3. **Alert Formatter** (`alert_formatter.py`):
+   - Creates structured Slack Block Kit messages
+   - Applies severity-based formatting
+   - Includes relevant alert details
    - Creates actionable message format
 
 ### Summary Report Pipeline
 
 1. **Scheduler** (EventBridge):
-   - Triggers at 9:00 AM on working days
-   - Determines report type (Monday or weekday)
+   - Triggers Summary Generator Lambda at 9:00 AM on working days
+   - Uses cron expression for scheduling
 
-2. **Summary Generator** (Lambda):
-   - Queries Microsoft Defender API for historical alerts
-   - Aggregates and categorizes threats
-   - Generates summary statistics
-   - Creates formatted report
+2. **Summary Generator** (Lambda - `summary_generator.py`):
+   - Determines report type based on day of week
+   - Calculates appropriate time range (24 or 72 hours)
+   - Retrieves alerts from Microsoft Defender API
+   - Filters alerts by severity
+   - Calls formatter to create summary report
+   - Delivers formatted report to Slack
 
-3. **Report Formatter**:
-   - Creates structured summary
+3. **Summary Formatter** (`summary_formatter.py`):
+   - Creates structured summary using Slack Block Kit
+   - Categorizes alerts by threat type
+   - Provides overview statistics
    - Formats for readability
-   - Categorizes by threat type
-   - Highlights critical issues
+
+## Code Organization
+
+The codebase follows a modular structure:
+
+```
+src/
+├── functions/           # Lambda function handlers
+│   ├── alert_processor.py  # Processes real-time alerts
+│   └── summary_generator.py  # Generates daily reports
+└── lib/                 # Shared library code
+    ├── alert_formatter.py   # Formats alerts for Slack
+    ├── defender_client.py   # Microsoft Defender API client
+    ├── secret_manager.py    # Handles AWS Secrets Manager
+    ├── slack_client.py      # Slack API client
+    └── summary_formatter.py # Formats summary reports
+```
+
+This organization allows for:
+- Clear separation of concerns
+- Reusability of common code
+- Easier testing of individual components
+- Better maintainability
 
 ## Error Handling Strategy
 
-1. **Retry Logic**: Automatic retries for transient failures.
+1. **Structured Exception Handling**: Try-except blocks with specific exception handling.
 
-2. **Dead Letter Queues**: Capturing failed messages for troubleshooting.
+2. **Comprehensive Logging**: Detailed logging for debugging and troubleshooting.
 
-3. **Fallback Mechanisms**: Alternate notification paths if primary fails.
+3. **Graceful Degradation**: If non-critical components fail, the system continues operation.
 
-4. **Comprehensive Logging**: Detailed logging for troubleshooting and auditing.
+4. **Future Improvements**:
+   - Dead Letter Queues for capturing failed messages
+   - Retry mechanisms for transient failures
+   - Fallback notification paths for critical errors
 
 ## Scalability Considerations
 
-1. **Lambda Auto-scaling**: Functions will automatically scale with load.
+1. **Lambda Auto-scaling**: Functions automatically scale with load.
 
-2. **API Gateway Throttling**: Controlling request rates to prevent overloading.
+2. **API Gateway Throttling**: Can be configured to control request rates.
 
-3. **Slack Rate Limits**: Managing message delivery to respect Slack API limits. 
+3. **Slack Rate Limits**: Message delivery respects Slack API limits. 
