@@ -1,0 +1,69 @@
+# Microsoft Defender Slack Notification System - Project Intelligence
+
+## Project Patterns
+
+### 1. Infrastructure Standards
+- Use Terraform for all infrastructure definitions
+- Follow modular approach with reusable components
+- Store state in S3 with locking via DynamoDB
+- Use variables and locals for configuration
+- Apply least privilege principle for all IAM roles
+
+### 2. Code Organization
+- TypeScript for Lambda functions
+- Use src/ directory for source code
+- Separate concerns into modules (alert processing, formatting, API clients)
+- Keep Lambda handlers thin, delegate to service modules
+- Use interfaces to define data contracts
+
+### 3. Formatting and Naming
+- Use camelCase for variable and function names
+- Use PascalCase for interfaces and classes
+- Use kebab-case for file names
+- Prefix interfaces with "I" (e.g., IAlertData)
+- Suffix service classes with "Service" (e.g., AlertProcessorService)
+
+### 4. Security Practices
+- Never hardcode secrets or credentials
+- Use AWS Secrets Manager for all sensitive data
+- Validate and sanitize all incoming data
+- Apply appropriate content security policies
+- Log securely (no sensitive data in logs)
+
+### 5. Testing Strategy
+- Use Jest for unit and integration tests
+- Mock external dependencies
+- Use dependency injection for testability
+- Achieve high test coverage for critical paths
+- Use AWS SAM for local Lambda testing
+
+### 6. Documentation
+- Document all modules and functions with JSDoc
+- Maintain up-to-date Memory Bank entries
+- Document API endpoints with OpenAPI
+- Include setup instructions in README
+- Document message formats and examples
+
+## User Preferences
+- Focus on clean, maintainable code
+- Emphasize security best practices
+- Provide detailed planning before implementation
+- Follow AWS best practices for serverless
+- Modular approach for easy maintenance
+
+## Implementation Notes
+- Prefer async/await over callbacks and Promises
+- Use structured error handling with custom error types
+- Implement comprehensive logging
+- Use environment variables for configuration
+- Apply defensive programming principles
+
+## Tools and Technologies
+- AWS CDK or Terraform for infrastructure
+- Node.js 18+ runtime for Lambda
+- TypeScript for type safety
+- Jest for testing
+- ESLint for code quality
+- AWS SDK for JavaScript v3
+- Axios for HTTP requests
+- Winston for logging 
