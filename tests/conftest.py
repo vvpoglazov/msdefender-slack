@@ -26,65 +26,44 @@ def mock_slack_client():
 
 @pytest.fixture
 def mock_defender_client():
-    """Return a mock DefenderClient that returns sample alerts."""
+    """Return a mock DefenderClient that returns sample vulnerabilities."""
     mock_client = MagicMock()
-    mock_client.get_alerts.return_value = [
+    mock_client.get_vulnerabilities.return_value = [
         {
-            'id': 'alert-id-1',
-            'title': 'Test Security Alert 1',
-            'alertSeverity': 'high',
-            'description': 'This is a test high severity alert',
-            'createdDateTime': '2023-06-15T10:00:00Z',
-            'status': 'new'
+            'id': 'CVE-2023-12345',
+            'name': 'Test Critical Vulnerability',
+            'severity': 'Critical',
+            'description': 'This is a test critical severity vulnerability',
+            'cvssV3': 9.8,
+            'exposedMachines': 5,
+            'publishedOn': '2023-06-15T10:00:00Z',
+            'updatedOn': '2023-06-16T14:30:00Z',
+            'publicExploit': True
         },
         {
-            'id': 'alert-id-2',
-            'title': 'Test Security Alert 2',
-            'alertSeverity': 'medium',
-            'description': 'This is a test medium severity alert',
-            'createdDateTime': '2023-06-15T11:00:00Z',
-            'status': 'new'
+            'id': 'CVE-2023-23456',
+            'name': 'Test High Vulnerability',
+            'severity': 'High',
+            'description': 'This is a test high severity vulnerability',
+            'cvssV3': 7.5,
+            'exposedMachines': 3,
+            'publishedOn': '2023-06-14T09:00:00Z',
+            'updatedOn': '2023-06-15T11:20:00Z',
+            'publicExploit': False
         },
         {
-            'id': 'alert-id-3',
-            'title': 'Test Security Alert 3',
-            'alertSeverity': 'critical',
-            'description': 'This is a test critical severity alert',
-            'createdDateTime': '2023-06-15T12:00:00Z',
-            'status': 'new'
+            'id': 'CVE-2023-34567',
+            'name': 'Test Medium Vulnerability',
+            'severity': 'Medium',
+            'description': 'This is a test medium severity vulnerability',
+            'cvssV3': 5.0,
+            'exposedMachines': 2,
+            'publishedOn': '2023-06-13T08:00:00Z',
+            'updatedOn': '2023-06-13T16:45:00Z',
+            'publicExploit': False
         }
     ]
     return mock_client
-
-
-@pytest.fixture
-def api_gateway_event():
-    """Return a mock API Gateway event with a Defender alert payload."""
-    return {
-        'body': json.dumps({
-            'id': 'alert-id-1',
-            'title': 'Test Security Alert',
-            'alertSeverity': 'high',
-            'description': 'This is a test alert from Defender',
-            'createdDateTime': '2023-06-15T10:00:00Z',
-            'status': 'new',
-            'category': 'InitialAccess',
-            'sourceMaterials': ['https://example.com/alert/1'],
-            'vendorInformation': {
-                'provider': 'Microsoft',
-                'providerVersion': '1.0'
-            }
-        }),
-        'requestContext': {
-            'identity': {
-                'sourceIp': '192.168.1.1'
-            },
-            'requestId': 'test-request-id'
-        },
-        'headers': {
-            'Content-Type': 'application/json'
-        }
-    }
 
 
 @pytest.fixture
@@ -106,14 +85,14 @@ def eventbridge_event():
 
 
 @pytest.fixture
-def mock_format_alert():
-    """Mock the format_alert function to return test blocks."""
+def mock_format_vulnerability():
+    """Mock the format_vulnerability function to return test blocks."""
     return [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "Microsoft Defender Security Alert: High Severity",
+                "text": "Microsoft Defender Vulnerability: HIGH",
                 "emoji": True
             }
         },
@@ -121,21 +100,21 @@ def mock_format_alert():
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*Test Security Alert*"
+                "text": "*Test Vulnerability*\nThis is a test vulnerability."
             }
         }
     ]
 
 
 @pytest.fixture
-def mock_format_summary():
-    """Mock the format_summary function to return test blocks."""
+def mock_format_vulnerabilities_summary():
+    """Mock the format_vulnerabilities_summary function to return test blocks."""
     return [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "Microsoft Defender Daily Security Summary",
+                "text": "Microsoft Defender Vulnerability Summary",
                 "emoji": True
             }
         },
@@ -143,7 +122,7 @@ def mock_format_summary():
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*2 High/Critical Alerts in the Last 24 Hours*"
+                "text": "*Found 2 High/Critical Vulnerabilities in the Last 24 Hours*"
             }
         }
     ] 

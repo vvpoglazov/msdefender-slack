@@ -23,7 +23,7 @@ variable "lambda_package_path" {
 }
 
 variable "slack_channel" {
-  description = "Slack channel to send alerts to"
+  description = "Slack channel to send vulnerability notifications to"
   type        = string
   default     = "security-alerts"
 } 

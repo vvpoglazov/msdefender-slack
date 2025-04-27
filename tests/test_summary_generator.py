@@ -25,8 +25,8 @@ def summary_generator_with_mocks(mock_secrets, mock_slack_client, mock_defender_
 @pytest.mark.parametrize("env_vars", [
     {},  # Test with no environment variables (use defaults)
     {"SLACK_CHANNEL": "custom-channel"},  # Test with custom channel
-    {"ALERT_SEVERITY_FILTER": "high,critical,medium"},  # Test with custom severity filter
-    {"SLACK_CHANNEL": "custom-channel", "ALERT_SEVERITY_FILTER": "critical"}  # Test with both custom values
+    {"VULNERABILITY_SEVERITY_FILTER": "high,critical,medium"},  # Test with custom severity filter
+    {"SLACK_CHANNEL": "custom-channel", "VULNERABILITY_SEVERITY_FILTER": "critical"}  # Test with both custom values
 ])
 def test_config_values(env_vars):
     """Test that Config correctly reads environment variables with different settings."""
@@ -43,8 +43,8 @@ def test_config_values(env_vars):
             assert Config.get_slack_channel() == Config.DEFAULT_SLACK_CHANNEL
         
         # Test severity filter
-        if "ALERT_SEVERITY_FILTER" in env_vars:
-            expected_filter = [s.strip() for s in env_vars["ALERT_SEVERITY_FILTER"].split(",")]
+        if "VULNERABILITY_SEVERITY_FILTER" in env_vars:
+            expected_filter = [s.strip() for s in env_vars["VULNERABILITY_SEVERITY_FILTER"].split(",")]
             assert Config.get_severity_filter() == expected_filter
         else:
             assert Config.get_severity_filter() == Config.DEFAULT_SEVERITY_FILTER
@@ -111,74 +111,39 @@ def test_determine_time_range(summary_generator_with_mocks, day_type, expected_h
         assert generator.determine_time_range() == expected_hours
 
 
-def test_fetch_alerts_success(summary_generator_with_mocks):
-    """Test successful alert fetching."""
+def test_fetch_vulnerabilities_success(summary_generator_with_mocks):
+    """Test successful vulnerability fetching."""
     generator = summary_generator_with_mocks
     
     # Call the function
-    results = generator.fetch_alerts(24)
+    results = generator.fetch_vulnerabilities(24)
     
     # Verify results
     assert results is not None
-    assert len(results) == 3  # Mock returns 3 alerts
+    assert len(results) == 3  # Mock returns 3 vulnerabilities
     
     # Verify the defender client was called with correct parameters
-    # Extract the two ISO datetime strings from the call parameters
-    call_args = generator.defender_client.get_alerts.call_args[1]
-    start_time = call_args.get('start_time')
-    end_time = call_args.get('end_time')
-    
-    # Verify the time format and that start time is earlier than end time
-    assert start_time.endswith('Z')  # ISO format ends with Z for UTC
-    assert end_time.endswith('Z')
-    assert start_time < end_time
+    generator.defender_client.get_vulnerabilities.assert_called_once()
+    call_args = generator.defender_client.get_vulnerabilities.call_args[1]
+    assert call_args['hours_lookback'] == 24
+    assert call_args['severity_filter'] is not None
 
 
-def test_fetch_alerts_no_client(summary_generator_with_mocks):
-    """Test alert fetching with no initialized defender client."""
+def test_fetch_vulnerabilities_no_client(summary_generator_with_mocks):
+    """Test vulnerability fetching with no initialized defender client."""
     generator = summary_generator_with_mocks
     generator.defender_client = None
     
     # Call the function
-    results = generator.fetch_alerts(24)
+    results = generator.fetch_vulnerabilities(24)
     
     # Verify results
     assert results is None
 
 
-def test_filter_alerts_by_severity(summary_generator_with_mocks):
-    """Test filtering alerts by severity."""
-    generator = summary_generator_with_mocks
-    
-    # Test data
-    alerts = [
-        {'id': '1', 'alertSeverity': 'high'},
-        {'id': '2', 'alertSeverity': 'medium'},
-        {'id': '3', 'alertSeverity': 'low'},
-        {'id': '4', 'alertSeverity': 'critical'},
-        {'id': '5', 'alertSeverity': 'HIGH'},  # Test case insensitivity
-        {'id': '6'}  # Missing severity
-    ]
-    
-    # Test with different severity filters
-    high_critical_filter = ['high', 'critical']
-    filtered = generator.filter_alerts_by_severity(alerts, high_critical_filter)
-    assert len(filtered) == 3
-    assert all(alert['id'] in ['1', '4', '5'] for alert in filtered)
-    
-    # Test with empty alerts list
-    assert generator.filter_alerts_by_severity([], high_critical_filter) == []
-    
-    # Test with different filter
-    medium_filter = ['medium']
-    filtered = generator.filter_alerts_by_severity(alerts, medium_filter)
-    assert len(filtered) == 1
-    assert filtered[0]['id'] == '2'
-
-
-@patch('src.functions.summary_generator.format_summary')
-def test_generate_summary_with_alerts(mock_format_summary, summary_generator_with_mocks):
-    """Test generating summary when alerts are found."""
+@patch('src.functions.summary_generator.format_vulnerabilities_summary')
+def test_generate_summary_with_vulnerabilities(mock_format_summary, summary_generator_with_mocks):
+    """Test generating summary when vulnerabilities are found."""
     generator = summary_generator_with_mocks
     
     # Use fixture blocks for the mock return value
@@ -187,7 +152,7 @@ def test_generate_summary_with_alerts(mock_format_summary, summary_generator_wit
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "Microsoft Defender Daily Security Summary",
+                "text": "Microsoft Defender Vulnerability Summary",
                 "emoji": True
             }
         },
@@ -195,36 +160,70 @@ def test_generate_summary_with_alerts(mock_format_summary, summary_generator_wit
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*2 High/Critical Alerts in the Last 24 Hours*"
+                "text": "*Found 2 High/Critical Vulnerabilities*"
             }
         }
     ]
     
-    # Mock the time range and fetch functions
-    with patch.object(generator, 'determine_time_range', return_value=24):
-        # Call the function
-        result = generator.generate_summary('test-channel', ['high', 'critical'])
+    # Configure generator mock to return vulnerabilities
+    with patch.object(generator, 'fetch_vulnerabilities') as mock_fetch:
+        mock_fetch.return_value = [
+            {"id": "CVE-2023-12345", "severity": "Critical", "name": "Test Vulnerability 1"},
+            {"id": "CVE-2023-23456", "severity": "High", "name": "Test Vulnerability 2"}
+        ]
         
-        # Verify results
-        assert result['statusCode'] == 200
-        assert 'Summary report sent' in json.loads(result['body'])['message']
+        # Call generate_summary
+        result = generator.generate_summary("test-channel", ["Critical", "High"])
         
-        # Verify the Slack client was called with correct parameters
-        generator.slack_client.post_message.assert_called_once_with(
-            channel='test-channel',
-            blocks=mock_format_summary.return_value
-        )
+        # Verify the result
+        assert result["statusCode"] == 200
+        assert "Vulnerabilities reported successfully" in json.loads(result["body"])["message"]
+        
+        # Verify the mocks were called correctly
+        mock_fetch.assert_called_once()
+        mock_format_summary.assert_called_once()
+        generator.slack_client.post_message.assert_called_once()
 
 
-@patch('src.functions.summary_generator.format_summary')
-def test_generate_summary_no_matching_alerts(mock_format_summary, summary_generator_with_mocks):
-    """Test generating summary when no alerts match severity filter."""
+def test_filter_vulnerabilities_by_severity(summary_generator_with_mocks):
+    """Test filtering vulnerabilities by severity."""
     generator = summary_generator_with_mocks
     
-    # Configure mock to return alerts that don't match filter
-    generator.defender_client.get_alerts.return_value = [
-        {'id': '1', 'alertSeverity': 'medium'},
-        {'id': '2', 'alertSeverity': 'low'}
+    # Test data
+    vulnerabilities = [
+        {'id': '1', 'severity': 'high'},
+        {'id': '2', 'severity': 'medium'},
+        {'id': '3', 'severity': 'low'},
+        {'id': '4', 'severity': 'critical'},
+        {'id': '5', 'severity': 'HIGH'},  # Test case insensitivity
+        {'id': '6'}  # Missing severity
+    ]
+    
+    # Test with different severity filters
+    high_critical_filter = ['high', 'critical']
+    filtered = generator.filter_vulnerabilities_by_severity(vulnerabilities, high_critical_filter)
+    assert len(filtered) == 3
+    assert all(vulnerability['id'] in ['1', '4', '5'] for vulnerability in filtered)
+    
+    # Test with empty vulnerabilities list
+    assert generator.filter_vulnerabilities_by_severity([], high_critical_filter) == []
+    
+    # Test with different filter
+    medium_filter = ['medium']
+    filtered = generator.filter_vulnerabilities_by_severity(vulnerabilities, medium_filter)
+    assert len(filtered) == 1
+    assert filtered[0]['id'] == '2'
+
+
+@patch('src.functions.summary_generator.format_vulnerabilities_summary')
+def test_generate_summary_no_matching_vulnerabilities(mock_format_summary, summary_generator_with_mocks):
+    """Test generating summary when no vulnerabilities match severity filter."""
+    generator = summary_generator_with_mocks
+    
+    # Configure mock to return vulnerabilities that don't match filter
+    generator.defender_client.get_vulnerabilities.return_value = [
+        {'id': '1', 'severity': 'medium'},
+        {'id': '2', 'severity': 'low'}
     ]
     
     # Mock the time range function
@@ -234,18 +233,18 @@ def test_generate_summary_no_matching_alerts(mock_format_summary, summary_genera
         
         # Verify results
         assert result['statusCode'] == 200
-        assert 'No matching alerts to report' in json.loads(result['body'])['message']
+        assert 'No matching vulnerabilities to report' in json.loads(result['body'])['message']
         
-        # Verify format_summary was not called (no alerts to format)
+        # Verify format_vulnerabilities_summary was not called (no vulnerabilities to format)
         mock_format_summary.assert_not_called()
 
 
-def test_generate_summary_no_alerts_returned(summary_generator_with_mocks):
-    """Test generating summary when no alerts are found at all."""
+def test_generate_summary_no_vulnerabilities_returned(summary_generator_with_mocks):
+    """Test generating summary when no vulnerabilities are found at all."""
     generator = summary_generator_with_mocks
     
     # Configure mock to return empty list
-    generator.defender_client.get_alerts.return_value = []
+    generator.defender_client.get_vulnerabilities.return_value = []
     
     # Mock the time range function
     with patch.object(generator, 'determine_time_range', return_value=24):
@@ -254,7 +253,7 @@ def test_generate_summary_no_alerts_returned(summary_generator_with_mocks):
         
         # Verify results
         assert result['statusCode'] == 200
-        assert 'No matching alerts to report' in json.loads(result['body'])['message']
+        assert 'No matching vulnerabilities to report' in json.loads(result['body'])['message']
 
 
 def test_generate_summary_fetch_error(summary_generator_with_mocks):
@@ -262,7 +261,7 @@ def test_generate_summary_fetch_error(summary_generator_with_mocks):
     generator = summary_generator_with_mocks
     
     # Configure mock to return None (simulating fetch failure)
-    with patch.object(generator, 'fetch_alerts', return_value=None):
+    with patch.object(generator, 'fetch_vulnerabilities', return_value=None):
         # Mock the send_error_notification method
         with patch.object(generator, 'send_error_notification') as mock_send_error:
             # Call the function
@@ -270,40 +269,40 @@ def test_generate_summary_fetch_error(summary_generator_with_mocks):
             
             # Verify results
             assert result['statusCode'] == 500
-            assert 'Failed to fetch alerts' in json.loads(result['body'])['message']
+            assert 'Failed to fetch vulnerabilities' in json.loads(result['body'])['message']
             
             # Verify error notification was sent
             mock_send_error.assert_called_once()
 
 
-def test_send_no_alerts_message_success(summary_generator_with_mocks):
-    """Test sending 'no alerts' message successfully."""
+def test_send_no_vulnerabilities_message_success(summary_generator_with_mocks):
+    """Test sending 'no vulnerabilities' message successfully."""
     generator = summary_generator_with_mocks
     
     # Call the function
-    result = generator.send_no_alerts_message('test-channel', 24, 'high,critical')
+    result = generator.send_no_vulnerabilities_message('test-channel', 24, 'high,critical')
     
     # Verify results
     assert result['statusCode'] == 200
-    assert 'No matching alerts to report' in json.loads(result['body'])['message']
+    assert 'No matching vulnerabilities to report' in json.loads(result['body'])['message']
     
     # Verify the Slack client was called
     generator.slack_client.post_message.assert_called_once()
     # Extract and verify the first block's text
     call_args = generator.slack_client.post_message.call_args[1]
     blocks = call_args.get('blocks')
-    assert blocks[1]['text']['text'].startswith('*No alerts matching severity levels')
+    assert blocks[1]['text']['text'].startswith('*No vulnerabilities matching severity levels')
 
 
-def test_send_no_alerts_message_error(summary_generator_with_mocks):
-    """Test handling errors when sending 'no alerts' message."""
+def test_send_no_vulnerabilities_message_error(summary_generator_with_mocks):
+    """Test handling errors when sending 'no vulnerabilities' message."""
     generator = summary_generator_with_mocks
     
     # Configure mock to return error
     generator.slack_client.post_message.return_value = {'ok': False, 'error': 'channel_not_found'}
     
     # Call the function
-    result = generator.send_no_alerts_message('invalid-channel', 24, 'high,critical')
+    result = generator.send_no_vulnerabilities_message('invalid-channel', 24, 'high,critical')
     
     # Verify results
     assert result['statusCode'] == 500

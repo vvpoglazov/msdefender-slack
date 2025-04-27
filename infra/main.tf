@@ -45,7 +45,7 @@ resource "aws_api_gateway_integration" "lambda_integration" {
 
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.alert_processor.invoke_arn
+  uri                     = aws_lambda_function.vulnerability_reporter.invoke_arn
 }
 
 # Deploy the API Gateway
@@ -62,10 +62,10 @@ resource "aws_api_gateway_deployment" "defender_webhook" {
   }
 }
 
-# Alert Processor Lambda
-resource "aws_lambda_function" "alert_processor" {
-  function_name = "${var.project_name}-alert-processor"
-  handler       = "functions.alert_processor.handler"
+# Vulnerability Reporter Lambda
+resource "aws_lambda_function" "vulnerability_reporter" {
+  function_name = "${var.project_name}-vulnerability-reporter"
+  handler       = "functions.vulnerability_reporter.handler"
   role          = aws_iam_role.lambda_exec.arn
   runtime       = "python3.9"
 
@@ -78,6 +78,8 @@ resource "aws_lambda_function" "alert_processor" {
   environment {
     variables = {
       SLACK_CHANNEL = var.slack_channel
+      VULNERABILITY_SEVERITY_FILTER = "high,critical"
+      HOURS_LOOKBACK = "24"
       ENVIRONMENT   = var.environment
     }
   }
@@ -99,6 +101,7 @@ resource "aws_lambda_function" "summary_generator" {
   environment {
     variables = {
       SLACK_CHANNEL = var.slack_channel
+      VULNERABILITY_SEVERITY_FILTER = "high,critical"
       ENVIRONMENT   = var.environment
     }
   }
@@ -173,7 +176,7 @@ resource "aws_iam_role_policy_attachment" "lambda_policy_attachment" {
 resource "aws_lambda_permission" "api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.alert_processor.function_name
+  function_name = aws_lambda_function.vulnerability_reporter.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.defender_webhook.execution_arn}/*/${aws_api_gateway_method.defender_webhook.http_method}${aws_api_gateway_resource.defender_webhook.path}"
 }
@@ -199,11 +202,30 @@ resource "aws_secretsmanager_secret_version" "api_keys" {
   secret_string = jsonencode({
     microsoft_defender_client_id     = "placeholder",
     microsoft_defender_client_secret = "placeholder",
-    slack_api_token                  = "placeholder"
+    microsoft_defender_tenant_id     = "placeholder",
+    slack_api_token                 = "placeholder"
   })
 }
 
-# Output the API Gateway URL
-output "api_gateway_url" {
-  value = "${aws_api_gateway_deployment.defender_webhook.invoke_url}${aws_api_gateway_resource.defender_webhook.path}"
+# CloudWatch Log Group for Alert Processor
+resource "aws_cloudwatch_log_group" "vulnerability_reporter" {
+  name              = "/aws/lambda/${aws_lambda_function.vulnerability_reporter.function_name}"
+  retention_in_days = 30
+}
+
+# CloudWatch Log Group for Summary Generator
+resource "aws_cloudwatch_log_group" "summary_generator" {
+  name              = "/aws/lambda/${aws_lambda_function.summary_generator.function_name}"
+  retention_in_days = 30
+}
+
+# Output values
+output "api_gateway_invoke_url" {
+  description = "URL to set in Microsoft Defender webhook configuration"
+  value       = "${aws_api_gateway_deployment.defender_webhook.invoke_url}${aws_api_gateway_resource.defender_webhook.path}"
+}
+
+output "lambda_function_names" {
+  description = "Lambda function names"
+  value       = [aws_lambda_function.vulnerability_reporter.function_name, aws_lambda_function.summary_generator.function_name]
 } 
